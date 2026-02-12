@@ -1,5 +1,3 @@
-import React, { useState } from 'react';
-import { Upload, FileText, Zap, Copy, Check } from 'lucide-react';
 import './globals.css';
 
 export const metadata = {
