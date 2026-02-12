@@ -1,10 +1,21 @@
 export async function POST(request) {
   try {
-    const body = await request.json();
-    const resumeText = body.resumeText;
-    const jobDescText = body.jobDescText;
+    let resumeText, jobDescText;
+    
+    try {
+      const body = await request.json();
+      resumeText = body.resumeText;
+      jobDescText = body.jobDescText;
+    } catch (parseError) {
+      console.error('JSON parse error:', parseError);
+      return new Response(
+        JSON.stringify({ error: 'Invalid JSON in request body' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
 
     if (!resumeText || !jobDescText) {
+      console.error('Missing data:', { hasResume: !!resumeText, hasJobDesc: !!jobDescText });
       return new Response(
         JSON.stringify({ error: 'Resume and job description are required' }),
         { status: 400, headers: { 'Content-Type': 'application/json' } }
@@ -12,14 +23,16 @@ export async function POST(request) {
     }
 
     const apiKey = process.env.ANTHROPIC_API_KEY;
+    
     if (!apiKey) {
+      console.error('API key not found');
       return new Response(
-        JSON.stringify({ error: 'API key not configured on server' }),
+        JSON.stringify({ error: 'API key not configured' }),
         { status: 500, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -62,18 +75,17 @@ Provide at least 5-8 suggestions. Return ONLY the JSON array, no other text.`,
       }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('Anthropic API error:', errorData);
+    if (!anthropicResponse.ok) {
+      const errorText = await anthropicResponse.text();
+      console.error('Anthropic error:', anthropicResponse.status, errorText);
       return new Response(
-        JSON.stringify({ error: `Anthropic API error: ${response.status}` }),
-        { status: response.status, headers: { 'Content-Type': 'application/json' } }
+        JSON.stringify({ error: `API error: ${anthropicResponse.status}` }),
+        { status: anthropicResponse.status, headers: { 'Content-Type': 'application/json' } }
       );
     }
 
-    const data = await response.json();
+    const data = await anthropicResponse.json();
     let content = data.content[0].text;
-
     content = content.replace(/```json\n?|\n?```/g, '').trim();
     const parsed = JSON.parse(content);
 
@@ -82,9 +94,9 @@ Provide at least 5-8 suggestions. Return ONLY the JSON array, no other text.`,
       headers: { 'Content-Type': 'application/json' },
     });
   } catch (error) {
-    console.error('Error:', error);
+    console.error('Server error:', error);
     return new Response(
-      JSON.stringify({ error: `Server error: ${error.message}` }),
+      JSON.stringify({ error: error.message }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
