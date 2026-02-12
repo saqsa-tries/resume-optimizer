@@ -1,43 +1,23 @@
-export async function POST(request) {
+export async function POST(req) {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  
+  if (!apiKey) {
+    return Response.json({ error: 'API key not configured' }, { status: 500 });
+  }
+
+  const { resumeText, jobDescText } = await req.json();
+
+  if (!resumeText || !jobDescText) {
+    return Response.json({ error: 'Missing resume or job description' }, { status: 400 });
+  }
+
   try {
-    let resumeText, jobDescText;
-    
-    try {
-      const body = await request.json();
-      resumeText = body.resumeText;
-      jobDescText = body.jobDescText;
-    } catch (parseError) {
-      console.error('JSON parse error:', parseError);
-      return new Response(
-        JSON.stringify({ error: 'Invalid JSON in request body' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    if (!resumeText || !jobDescText) {
-      console.error('Missing data:', { hasResume: !!resumeText, hasJobDesc: !!jobDescText });
-      return new Response(
-        JSON.stringify({ error: 'Resume and job description are required' }),
-        { status: 400, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    
-    if (!apiKey) {
-      console.error('API key not found');
-      return new Response(
-        JSON.stringify({ error: 'API key not configured' }),
-        { status: 500, headers: { 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const anthropicResponse = await fetch('https://api.anthropic.com/v1/messages', {
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
         'x-api-key': apiKey,
         'anthropic-version': '2023-06-01',
+        'content-type': 'application/json',
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5-20250929',
@@ -45,7 +25,7 @@ export async function POST(request) {
         messages: [
           {
             role: 'user',
-            content: `You are a professional resume optimizer. Analyze the following resume against the job description and provide specific, actionable bullet points that should be modified or added to better match the job requirements.
+            content: `Analyze this resume against the job description. Return ONLY a JSON array (no other text) with 5-8 suggestions:
 
 RESUME:
 ${resumeText}
@@ -53,51 +33,27 @@ ${resumeText}
 JOB DESCRIPTION:
 ${jobDescText}
 
-Please provide your response as a JSON array with this structure:
-[
-  {
-    "id": 1,
-    "original": "Original resume bullet point or section",
-    "suggested": "How it should be changed to match the job description",
-    "keyword": "Key skill/requirement from job description it addresses"
-  }
-]
-
-Focus on:
-1. Keywords and skills mentioned in the job description
-2. Quantifiable achievements that match the role
-3. Industry-specific terminology
-4. Requirements that are missing from the resume
-
-Provide at least 5-8 suggestions. Return ONLY the JSON array, no other text.`,
+Return this format:
+[{"id":1,"original":"original text","suggested":"suggested text","keyword":"relevant skill"}]`,
           },
         ],
       }),
     });
 
-    if (!anthropicResponse.ok) {
-      const errorText = await anthropicResponse.text();
-      console.error('Anthropic error:', anthropicResponse.status, errorText);
-      return new Response(
-        JSON.stringify({ error: `API error: ${anthropicResponse.status}` }),
-        { status: anthropicResponse.status, headers: { 'Content-Type': 'application/json' } }
-      );
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Anthropic API Error:', response.status, error);
+      return Response.json({ error: `API returned ${response.status}` }, { status: response.status });
     }
 
-    const data = await anthropicResponse.json();
-    let content = data.content[0].text;
-    content = content.replace(/```json\n?|\n?```/g, '').trim();
-    const parsed = JSON.parse(content);
+    const data = await response.json();
+    let text = data.content[0].text.trim();
+    text = text.replace(/```json\n?|\n?```/g, '');
+    const suggestions = JSON.parse(text);
 
-    return new Response(JSON.stringify({ suggestions: parsed }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    });
+    return Response.json({ suggestions });
   } catch (error) {
-    console.error('Server error:', error);
-    return new Response(
-      JSON.stringify({ error: error.message }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
+    console.error('Error:', error.message);
+    return Response.json({ error: error.message }, { status: 500 });
   }
 }
