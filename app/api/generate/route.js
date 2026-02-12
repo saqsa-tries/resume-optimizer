@@ -1,17 +1,18 @@
 export async function POST(req) {
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  
-  if (!apiKey) {
-    return Response.json({ error: 'API key not configured' }, { status: 500 });
-  }
-
-  const { resumeText, jobDescText } = await req.json();
-
-  if (!resumeText || !jobDescText) {
-    return Response.json({ error: 'Missing resume or job description' }, { status: 400 });
-  }
-
   try {
+    const body = await req.json();
+    const resumeText = body.resumeText || '';
+    const jobDescText = body.jobDescText || '';
+
+    if (!resumeText.trim() || !jobDescText.trim()) {
+      return Response.json({ error: 'Resume and job description are required' }, { status: 400 });
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return Response.json({ error: 'Server not configured properly' }, { status: 500 });
+    }
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -25,7 +26,7 @@ export async function POST(req) {
         messages: [
           {
             role: 'user',
-            content: `Analyze this resume against the job description. Return ONLY a JSON array (no other text) with 5-8 suggestions:
+            content: `Analyze this resume against the job description. Return ONLY a JSON array with 5-8 suggestions:
 
 RESUME:
 ${resumeText}
@@ -33,17 +34,14 @@ ${resumeText}
 JOB DESCRIPTION:
 ${jobDescText}
 
-Return this format:
-[{"id":1,"original":"original text","suggested":"suggested text","keyword":"relevant skill"}]`,
+Format: [{"id":1,"original":"text","suggested":"text","keyword":"skill"}]`,
           },
         ],
       }),
     });
 
     if (!response.ok) {
-      const error = await response.text();
-      console.error('Anthropic API Error:', response.status, error);
-      return Response.json({ error: `API returned ${response.status}` }, { status: response.status });
+      return Response.json({ error: 'Claude API error' }, { status: response.status });
     }
 
     const data = await response.json();
@@ -53,7 +51,7 @@ Return this format:
 
     return Response.json({ suggestions });
   } catch (error) {
-    console.error('Error:', error.message);
-    return Response.json({ error: error.message }, { status: 500 });
+    console.error('Error:', error);
+    return Response.json({ error: 'Server error processing request' }, { status: 500 });
   }
 }
