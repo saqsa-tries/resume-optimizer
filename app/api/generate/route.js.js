@@ -1,22 +1,24 @@
 export async function POST(request) {
-  const { resumeText, jobDescText } = await request.json();
-
-  if (!resumeText || !jobDescText) {
-    return new Response(
-      JSON.stringify({ error: 'Resume and job description are required' }),
-      { status: 400, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-
-  const apiKey = process.env.ANTHROPIC_API_KEY;
-  if (!apiKey) {
-    return new Response(
-      JSON.stringify({ error: 'API key not configured on server' }),
-      { status: 500, headers: { 'Content-Type': 'application/json' } }
-    );
-  }
-
   try {
+    const body = await request.json();
+    const resumeText = body.resumeText;
+    const jobDescText = body.jobDescText;
+
+    if (!resumeText || !jobDescText) {
+      return new Response(
+        JSON.stringify({ error: 'Resume and job description are required' }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const apiKey = process.env.ANTHROPIC_API_KEY;
+    if (!apiKey) {
+      return new Response(
+        JSON.stringify({ error: 'API key not configured on server' }),
+        { status: 500, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
+
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -64,7 +66,7 @@ Provide at least 5-8 suggestions. Return ONLY the JSON array, no other text.`,
       const errorData = await response.json();
       console.error('Anthropic API error:', errorData);
       return new Response(
-        JSON.stringify({ error: `API error: ${response.status}` }),
+        JSON.stringify({ error: `Anthropic API error: ${response.status}` }),
         { status: response.status, headers: { 'Content-Type': 'application/json' } }
       );
     }
@@ -72,9 +74,7 @@ Provide at least 5-8 suggestions. Return ONLY the JSON array, no other text.`,
     const data = await response.json();
     let content = data.content[0].text;
 
-    // Clean up the response if it has markdown code blocks
     content = content.replace(/```json\n?|\n?```/g, '').trim();
-
     const parsed = JSON.parse(content);
 
     return new Response(JSON.stringify({ suggestions: parsed }), {
@@ -84,7 +84,7 @@ Provide at least 5-8 suggestions. Return ONLY the JSON array, no other text.`,
   } catch (error) {
     console.error('Error:', error);
     return new Response(
-      JSON.stringify({ error: 'Failed to generate suggestions' }),
+      JSON.stringify({ error: `Server error: ${error.message}` }),
       { status: 500, headers: { 'Content-Type': 'application/json' } }
     );
   }
