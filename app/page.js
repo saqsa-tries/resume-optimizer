@@ -34,53 +34,17 @@ export default function Home() {
       return;
     }
 
-    if (!process.env.NEXT_PUBLIC_API_KEY) {
-      setError('API key not configured. Please check your environment variables.');
-      return;
-    }
-
     setError('');
     setLoading(true);
     try {
-      const response = await fetch("https://api.anthropic.com/v1/messages", {
+      const response = await fetch("/api/generate", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-api-key": process.env.NEXT_PUBLIC_API_KEY,
         },
         body: JSON.stringify({
-          model: "claude-sonnet-4-5-20250929",
-          max_tokens: 2000,
-          messages: [
-            {
-              role: "user",
-              content: `You are a professional resume optimizer. Analyze the following resume against the job description and provide specific, actionable bullet points that should be modified or added to better match the job requirements.
-
-RESUME:
-${resumeText}
-
-JOB DESCRIPTION:
-${jobDescText}
-
-Please provide your response as a JSON array with this structure:
-[
-  {
-    "id": 1,
-    "original": "Original resume bullet point or section",
-    "suggested": "How it should be changed to match the job description",
-    "keyword": "Key skill/requirement from job description it addresses"
-  }
-]
-
-Focus on:
-1. Keywords and skills mentioned in the job description
-2. Quantifiable achievements that match the role
-3. Industry-specific terminology
-4. Requirements that are missing from the resume
-
-Provide at least 5-8 suggestions. Return ONLY the JSON array, no other text.`
-            }
-          ]
+          resumeText,
+          jobDescText,
         })
       });
 
@@ -89,13 +53,7 @@ Provide at least 5-8 suggestions. Return ONLY the JSON array, no other text.`
       }
 
       const data = await response.json();
-      let content = data.content[0].text;
-      
-      // Clean up the response if it has markdown code blocks
-      content = content.replace(/```json\n?|\n?```/g, '').trim();
-      
-      const parsed = JSON.parse(content);
-      setSuggestions(parsed);
+      setSuggestions(data.suggestions);
       setActiveTab('suggestions');
     } catch (error) {
       console.error('Error generating suggestions:', error);
