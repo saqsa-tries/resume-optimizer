@@ -1,79 +1,91 @@
-export async function POST(req) {
+export async function POST(request) {
+  const { resumeText, jobDescText } = await request.json();
+
+  if (!resumeText || !jobDescText) {
+    return new Response(
+      JSON.stringify({ error: 'Resume and job description are required' }),
+      { status: 400, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) {
+    return new Response(
+      JSON.stringify({ error: 'API key not configured on server' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
+  }
+
   try {
-    console.log('Step 1: Parsing request body');
-    const body = await req.json();
-    console.log('Step 2: Body parsed, keys:', Object.keys(body));
-    
-    const resumeText = body.resumeText || '';
-    const jobDescText = body.jobDescText || '';
-    
-    console.log('Step 3: Resume length:', resumeText.length);
-    console.log('Step 4: JobDesc length:', jobDescText.length);
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': apiKey,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-5-20250929',
+        max_tokens: 2000,
+        messages: [
+          {
+            role: 'user',
+            content: `You are a professional resume optimizer. Analyze the following resume against the job description and provide specific, actionable bullet points that should be modified or added to better match the job requirements.
 
-    if (!resumeText.trim() || !jobDescText.trim()) {
-      console.log('Step 5: Missing data - returning 400');
-      return Response.json({ error: 'Resume and job description are required' }, { status: 400 });
-    }
-
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    console.log('Step 6: API key exists:', !!apiKey);
-    
-    if (!apiKey) {
-      console.log('Step 7: No API key - returning 500');
-      return Response.json({ error: 'Server not configured properly' }, { status: 500 });
-    }
-
-    const requestBody = {
-      model: 'claude-sonnet-4-20250514',
-      max_tokens: 2000,
-      messages: [
-        {
-          role: 'user',
-          content: `Analyze resume vs job description. Return ONLY JSON array:
 RESUME:
 ${resumeText}
 
 JOB DESCRIPTION:
 ${jobDescText}
 
-Format: [{"id":1,"original":"","suggested":"","keyword":""}]`,
-        },
-      ],
-    };
+Please provide your response as a JSON array with this structure:
+[
+  {
+    "id": 1,
+    "original": "Original resume bullet point or section",
+    "suggested": "How it should be changed to match the job description",
+    "keyword": "Key skill/requirement from job description it addresses"
+  }
+]
 
-    console.log('Step 8: Sending to Anthropic');
-    console.log('Step 9: Request model:', requestBody.model);
-    
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify(requestBody),
+Focus on:
+1. Keywords and skills mentioned in the job description
+2. Quantifiable achievements that match the role
+3. Industry-specific terminology
+4. Requirements that are missing from the resume
+
+Provide at least 5-8 suggestions. Return ONLY the JSON array, no other text.`,
+          },
+        ],
+      }),
     });
 
-    console.log('Step 10: Response status:', response.status);
-    
     if (!response.ok) {
-      const errorText = await response.text();
-      console.log('Step 11: Error response:', errorText);
-      return Response.json({ error: `API returned ${response.status}: ${errorText}` }, { status: response.status });
+      const errorData = await response.json();
+      console.error('Anthropic API error:', errorData);
+      return new Response(
+        JSON.stringify({ error: `API error: ${response.status}` }),
+        { status: response.status, headers: { 'Content-Type': 'application/json' } }
+      );
     }
 
     const data = await response.json();
-    console.log('Step 12: Got response from Anthropic');
-    
-    let text = data.content[0].text.trim();
-    text = text.replace(/```json\n?|\n?```/g, '');
-    const suggestions = JSON.parse(text);
+    let content = data.content[0].text;
 
-    console.log('Step 13: Parsed suggestions, count:', suggestions.length);
-    return Response.json({ suggestions });
+    // Clean up the response if it has markdown code blocks
+    content = content.replace(/```json\n?|\n?```/g, '').trim();
+
+    const parsed = JSON.parse(content);
+
+    return new Response(JSON.stringify({ suggestions: parsed }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    });
   } catch (error) {
-    console.error('ERROR:', error.message);
-    console.error('Stack:', error.stack);
-    return Response.json({ error: `Error: ${error.message}` }, { status: 500 });
+    console.error('Error:', error);
+    return new Response(
+      JSON.stringify({ error: 'Failed to generate suggestions' }),
+      { status: 500, headers: { 'Content-Type': 'application/json' } }
+    );
   }
 }
